@@ -12,6 +12,7 @@ _targets/
 _targets.R
 cor.csv
 cor.png
+ecat.md
 miniconda
 results.html
 results.Rmd
