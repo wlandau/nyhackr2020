@@ -374,9 +374,10 @@ In addition, there's an external package called `tarchetypes` that uses these me
 
 ## Example targets workflow
 
-- Find the model that best predicts which customers will cancel their telecom subscriptions.
-- [IBM Watson Telco Customer Churn dataset](https://www.ibm.com/communities/analytics/watson-analytics-blog/predictive-insights-in-the-telco-customer-churn-data-set/).
-- Workflow principles generalize to the other fields, such as the life sciences.
+* Find the model that best predicts which customers will cancel their telecom subscriptions.
+* [IBM Watson Telco Customer Churn dataset](https://www.ibm.com/communities/analytics/watson-analytics-blog/predictive-insights-in-the-telco-customer-churn-data-set/).
+* Example from [Matt Dancho's 2018 RStudio AI Blog post](https://blogs.rstudio.com/tensorflow/posts/2018-01-11-keras-customer-churn/).
+* Workflow principles generalize to the other fields, such as the life sciences.
 
 ???
 
@@ -1129,3 +1130,10 @@ unlink("_targets.R")
 ???
 
 The workshop is publicly available and deployed to RStudio Cloud. Just sign up for a cloud account and log into a free instance of RStudio Server. We will spend our remaining time working through interactive exercises in the R notebooks here, with some breaks for Q&A and live coding demos to go over the solutions. If you missed part of the exercises or just want to go back and study in your own time, the workshop will still be available. I included the link to both the source and the cloud project here.
+
+---
+
+
+## References
+
+* Dancho (2018, Jan. 11). RStudio AI Blog: Deep Learning With Keras To Predict Customer Churn. Retrieved from <https://blogs.rstudio.com/tensorflow/posts/2018-01-11-keras-customer-churn/>

@@ -364,9 +364,10 @@ In addition, there's an external package called `tarchetypes` that uses these me
 
 ## Example targets workflow
 
-- Find the model that best predicts which customers will cancel their telecom subscriptions.
-- [IBM Watson Telco Customer Churn dataset](https://www.ibm.com/communities/analytics/watson-analytics-blog/predictive-insights-in-the-telco-customer-churn-data-set/).
-- Workflow principles generalize to the other fields, such as the life sciences.
+* Find the model that best predicts which customers will cancel their telecom subscriptions.
+* [IBM Watson Telco Customer Churn dataset](https://www.ibm.com/communities/analytics/watson-analytics-blog/predictive-insights-in-the-telco-customer-churn-data-set/).
+* Example from [Matt Dancho's 2018 RStudio AI Blog post](https://blogs.rstudio.com/tensorflow/posts/2018-01-11-keras-customer-churn/).
+* Workflow principles generalize to the other fields, such as the life sciences.
 
 ???
 
@@ -716,13 +717,13 @@ tar_read(run_relu)
 #&gt; # A tibble: 1 x 6
 #&gt;   accuracy units1 units2 act1  act2  act3   
 #&gt;      &lt;dbl&gt;  &lt;dbl&gt;  &lt;dbl&gt; &lt;chr&gt; &lt;chr&gt; &lt;chr&gt;  
-#&gt; 1    0.799     16     16 relu  relu  sigmoid
+#&gt; 1    0.797     16     16 relu  relu  sigmoid
 
 tar_read(run_sigmoid)
 #&gt; # A tibble: 1 x 6
 #&gt;   accuracy units1 units2 act1    act2  act3   
 #&gt;      &lt;dbl&gt;  &lt;dbl&gt;  &lt;dbl&gt; &lt;chr&gt;   &lt;chr&gt; &lt;chr&gt;  
-#&gt; 1    0.799     16     16 sigmoid relu  sigmoid
+#&gt; 1    0.801     16     16 sigmoid relu  sigmoid
 ```
 
 ???
@@ -1124,6 +1125,13 @@ Challenge | [`7-challenge.Rmd`](https://github.com/wlandau/targets-tutorial/blob
 ???
 
 The workshop is publicly available and deployed to RStudio Cloud. Just sign up for a cloud account and log into a free instance of RStudio Server. We will spend our remaining time working through interactive exercises in the R notebooks here, with some breaks for Q&amp;A and live coding demos to go over the solutions. If you missed part of the exercises or just want to go back and study in your own time, the workshop will still be available. I included the link to both the source and the cloud project here.
+
+---
+
+
+## References
+
+* Dancho (2018, Jan. 11). RStudio AI Blog: Deep Learning With Keras To Predict Customer Churn. Retrieved from &lt;https://blogs.rstudio.com/tensorflow/posts/2018-01-11-keras-customer-churn/&gt;
     </textarea>
 <style data-target="print-only">@media screen {.remark-slide-container{display:block;}.remark-slide-scaler{box-shadow:none;}}</style>
 <script src="https://remarkjs.com/downloads/remark-latest.min.js"></script>
