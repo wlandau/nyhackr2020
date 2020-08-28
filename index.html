@@ -309,7 +309,17 @@ Then, every downstream target that branches over it will automatically create on
 
 ---
 
-## Parallel efficient dynamic branching
+## drake's dynamic branching has performance limitations
+
+![](./images/dynamic_drake.png)
+
+???
+
+The efficiency of dynamic branching is also better. Dynamic sub-targets in drake are strictly nested inside their parents, so all the sub-targets in a group must finish before any downstream sub-target can begin. But targets knows how to advance forward even if not all the upstream branches are finished. This behavior saves runtime and conserves computing resources and gets work done faster..
+
+---
+
+## Parallel efficient dynamic branching in targets
 
 ![](./images/dynamic_targets.png)
 
@@ -362,16 +372,20 @@ In addition, there's an external package called `tarchetypes` that uses these me
 
 ---
 
-## Example targets workflow
+## Example targets workflow: validate a Bayesian hierarchical model
 
-* Find the model that best predicts which customers will cancel their telecom subscriptions.
-* [IBM Cognos Analytics Telco customer churn dataset](https://community.ibm.com/community/user/businessanalytics/blogs/steven-macko/2019/07/11/telco-customer-churn-1113).
-* Example from [Matt Dancho's 2018 RStudio AI Blog post](https://blogs.rstudio.com/tensorflow/posts/2018-01-11-keras-customer-churn/).
-* Workflow principles generalize to the other fields, such as the life sciences.
+$$
+`\begin{aligned}
+y_i &amp;\stackrel{\text{iid}}{\sim} \text{Normal}(\alpha + \beta \cdot x_i, \ \sigma^2) \\
+\alpha &amp;\sim \text{Normal}(0, 1) \\
+\beta &amp;\sim \text{Normal}(0, 1) \\
+\sigma &amp;\sim \text{Uniform}(0, 1) \\
+\end{aligned}`
+$$
 
-???
-
-Let's look at an example. We're going to set up a machine learning project to predict customer dropout, or churn, based on the publicly available IBM Watson Telco customer churn dataset. We're going to train a bunch of deep neural nets on the data and pick the one with the best testing accuracy.
+1. Simulate 1000 datasets from the model.
+1. Fit the model to each simulated dataset.
+1. Verify that in 95% of the simulation reps, the `\(\beta\)` parameter values used for data generation are covered in 95% credible intervals.
 
 ---
 
@@ -426,624 +440,347 @@ The most obvious use for functions is as a way to avoid copies of repeated code 
 
 ---
 
-## Functions for customer churn
+## Function for data generation
 
 
 ```r
-split_data &lt;- function(churn_file) {
-  read_csv(churn_file, col_types = cols()) %&gt;%
-    initial_split(prop = 0.3)
-}
-
-prepare_recipe &lt;- function(churn_data) {
-  churn_data %&gt;%
-    training() %&gt;%
-    recipe(Churn ~ .) %&gt;%
-    step_rm(customerID) %&gt;%
-    step_naomit(all_outcomes(), all_predictors()) %&gt;%
-    step_discretize(tenure, options = list(cuts = 6)) %&gt;%
-    step_log(TotalCharges) %&gt;%
-    step_mutate(Churn = ifelse(Churn == "Yes", 1, 0)) %&gt;%
-    step_dummy(all_nominal(), -all_outcomes()) %&gt;%
-    step_center(all_predictors(), -all_outcomes()) %&gt;%
-    step_scale(all_predictors(), -all_outcomes()) %&gt;%
-    prep()
+simulate_data_continuous &lt;- function(...) {
+  alpha &lt;- rnorm(1, 0, 1)
+  beta &lt;- rnorm(1, 0, 1)
+  sigma &lt;- runif(1, 0, 1)
+  x &lt;- rnorm(100, 1, 1) # continuous covariate
+  y &lt;- rnorm(100, alpha + x * beta, sigma)
+  rep &lt;- basename(tempfile(pattern = "rep"))
+  tibble(x = x, y = y, beta_true = beta, rep = rep)
 }
 ```
 
-???
-
-Most of your functions revolve around 3 kinds of tasks: preparing datasets, analyzing datasets, and summarizing analyses. These two functions are all about the data. The first one accepts a file path, reads in the data, and splits it into training and test sets. The prepare_recipe() function accepts the return value from split_data() and converts the data into a format that our Keras models can accept in subsequent steps.
-
 ---
 
-## Functions for customer churn
+## Function to fit the model
 
 
 ```r
-define_model &lt;- function(churn_recipe, units1, units2, act1, act2, act3) {
-  # ...
-}
-
-train_model &lt;- function(churn_recipe, units1, units2, act1, act2, act3) {
-  # ...
-}
-
-test_accuracy &lt;- function(churn_data, churn_recipe, churn_model) {
-  # ...
-}
-
-test_model &lt;- function(churn_data, churn_recipe, units1, units2, act1, act2, act3) {
-  # ...
-}
-
-retrain_run &lt;- function(churn_run, churn_recipe) {
-  # ...
+fit_model &lt;- function(data, model_file, ...) {
+  stan_data &lt;- list(x = data$x, y = data$y, n = nrow(data))
+  truth &lt;- data$beta_true[1]
+  model &lt;- cmdstan_model(model_file)
+  fit &lt;- model$sample(data = stan_data, refresh = 0)
+  fit$summary() %&gt;%
+    filter(variable == "beta") %&gt;%
+    mutate(beta_true = truth, cover_beta = q5 &lt; truth &amp; truth &lt; q95)
 }
 ```
 
-???
-
-Similarly, you define functions to define, train, and test the Keras models.
-
 ---
 
-## Typical project structure
-
-* There are many variations on this theme.
+## Utility functions
 
 
 ```r
-_targets.R # Required top-level configuration file.
-R/
-*└── functions.R
-data/
-└── customer_churn.csv
+compile_model &lt;- function(model_file) {
+  cmdstan_model(model_file)
+  model_file
+}
+
+map_reps &lt;- function(data, fun, ...) {
+  data %&gt;%
+    group_by(rep) %&gt;%
+    group_modify(fun, ...) %&gt;%
+    ungroup()
+}
+
+quiet &lt;- function(code) {
+  capture.output(out &lt;- suppressMessages(code))
+  out
+}
 ```
 
-???
-
-You can organize your functions however you want, but it's common practice to put them in scripts inside an R/ folder. Similarly, input datasets can go anywhere, but a data/ folder just helps keep things clean.
-
-And at this point, you have a good clean function-oriented project. Even if you decide not to use targets, this function-oriented style still has a lot of value. However, if you're thinking about using targets, then converting to functions is almost all of the work. Once you've done that, you're already almost there. All you need now is to outline the specific steps of the computation in a formal pipeline. And that's where this _targets.R script comes into play. It always lives at the root of the project, and it's always called "_targets.R".
-
 ---
 
-## Build up your workflow as a pipeline of targets.
+## File structure
 
 
 ```r
-# _targets.R
+├── run.sh
+├── run.R
+*├── _targets.R
+├── _targets/
+├── sge.tmpl
+├── R
+*│   ├── functions.R
+*│   └── utils.R
+├── stan
+│   └── model.stan
+└── report.Rmd
+```
+
+---
+
+## Setup in _targets.R
+
+
+```r
+# Beginning of _targets.R
 library(targets)
+library(tarchetypes)
 source("R/functions.R")
-tar_option_set(packages = c("keras", "tidyverse", "rsample", "recipes", "yardstick"))
+source("R/utils.R")
+options(tidyverse.quiet = TRUE)
+options(clustermq.scheduler = "sge", clustermq.template = "sge.tmpl")
+tar_option_set(packages = c("cmdstanr", "rmarkdown", "tidyverse"))
+```
+
+---
+
+## Pipeline in _targets.R
+
+
+```r
+# End of _targets.R
 tar_pipeline(
-  tar_target(churn_file, "data/customer_churn.csv", format = "file"),
-  tar_target(churn_data, split_data(churn_file)),
-  tar_target(churn_recipe, prepare_recipe(churn_data))
-)
-```
-
-
-
-???
-
-The purpose of _targets.R is to set up the project at a high level. It loads the packages required to define the pipeline, it loads your custom functions and global objects, it sets high-level options such as the packages the targets are going to need, and it defines the pipeline at the very end.
-
-Inside the tar_pipeline() function, you list out objects called targets. Each target is an individual step in the workflow. It has an informative name like "sim" or "patients", and it has a R command that invokes your custom functions and returns a value.
-
----
-
-## The pipeline is a collection of skippable *targets*.
-
-
-```r
-tar_manifest(fields = c("name", "command"))
-#&gt; # A tibble: 3 x 2
-#&gt;   name         command                      
-#&gt;   &lt;chr&gt;        &lt;chr&gt;                        
-#&gt; 1 churn_recipe "prepare_recipe(churn_data)" 
-#&gt; 2 churn_data   "split_data(churn_file)"     
-#&gt; 3 churn_file   "\"data/customer_churn.csv\""
-```
-
-
-???
-
-There are several utility functions that inspect the pipeline for correctness. The tar_manifest() function shows you all the names of the targets and the R commands associated with them.
-
----
-
-## targets understands code and data dependencies.
-
-
-```r
-tar_visnetwork()
-```
-
-&lt;center&gt;
-&lt;img src="images/graph1.png", height = "400px" align="middle" style="border: none; box-shadow: none; text-align: center;"&gt;
-&lt;/center&gt;
-
-???
-
-It's always good practice to visualize the dependency graph of the plan. targets has functions to do this for you, and it really demystifies how the package works. So here you see the flow of the project from left to right. We reproducibly track an input data file, we load that data to split into training and test, and we prepare that data for the models using a Tidymodels recipe.
-
-But how does targets deduce this flow? How does it know that the churn_recipe depend on churn_data? The order you write targets in the pipeline does not matter. targets knows that churn_recipe depends on churn_data because the symbol "churn_data" is mentioned in the command for "churn_recipe" in the pipeline. targets scans your commands and functions without actually running them it in order to look for changes and understand dependency relationships. This is called static code analysis.
-
----
-
-## Build your first targets.
-
-
-```r
-tar_make()
-```
-
-
-```
-#&gt; ● run target churn_file
-#&gt; ● run target churn_data
-#&gt; ● run target churn_recipe
-```
-
-???
-
-To actually run the workflow, we use a function called tar_make(). tar_make() creates a clean new reproducible R process, runs _targets.R to populate the new session and define the pipeline, resolves the dependency graph, runs the correct targets in the correct order from the dependency graph, and writes the return values to storage.
-
----
-
-## Check the targets for problems
-
-- `tar_load()` and `tar_read()` get targets from the `_targets/` data store.
-
-
-```r
-ncol(training(tar_read(churn_data)))
-#&gt; [1] 21
-
-tar_load(churn_recipe)
-ncol(juice(churn_recipe))
-#&gt; [1] 36
-```
-
-???
-
-Afterwards, all the targets are in storage. There's a special key-value store in a hidden _targets/ folder, and targets has functions tar_load() and tar_read() to retrieve data from the store. targets abstracts artifacts as ordinary objects. You don't need to worry about where these files are located, you just need to know the target names. This is the exploratory analysis phase. Always inspect your targets for issues between calls to tar_make().
-
----
-
-## Build up the pipeline *gradually*.
-
-.large[
-1. Add a couple targets.
-2. Run the pipeline with `tar_make()`.
-3. Inspect the new targets with `tar_load()` and `tar_read()`.
-4. Repeat often. Not very time-consuming because `tar_make()` skips up-to-date targets.
-]
-
-???
-
-This is part of an iterative process for building up a pipeline. We add a couple targets, run the pipeline, inspect the new targets, and repeat. We do this early and often. And as you will see, because targets can iterate frequently while still saving you time.
-
----
-
-## Add some models.
-
-
-```r
-# _targets.R
-library(targets)
-source("R/functions.R")
-tar_option_set(packages = c("keras", "tidyverse", "rsample", "recipes", "yardstick"))
-tar_pipeline(
-  tar_target(churn_file, "data/customer_churn.csv", format = "file"),
-  tar_target(churn_data, split_data(churn_file)),
-  tar_target(churn_recipe, prepare_recipe(churn_data)),
-* tar_target(run_relu, test_model(act1 = "relu", churn_data, churn_recipe)),
-* tar_target(run_sigmoid, test_model(act1 = "sigmoid", churn_data, churn_recipe))
-)
-```
-
-
-
-???
-
-With the data in place, we are now ready to add some models. We start with two models fit to the same data using different hyperparameters.
-
----
-
-## Previous work is still up to date.
-
-
-```r
-tar_outdated()
-```
-
-
-```
-#&gt; [1] "run_relu"    "run_sigmoid"
-```
-
-???
-
-When we inspect the pipeline, we see that some work needs to be done. But all our data processing steps are already up to date.
-
----
-
-## Previous work is still up to date.
-
-
-```r
-tar_visnetwork()
-```
-&lt;center&gt;
-&lt;img src="images/graph2.png", height = "400px" align="middle" style="border: none; box-shadow: none; text-align: center;"&gt;
-&lt;/center&gt;
-
-???
-
-We can see this even more clearly in the dependency graph.
-
----
-
-## Up-to-date targets are skipped.
-
-
-```r
-tar_make()
-```
-
-
-```
-#&gt; ✓ skip target churn_file
-#&gt; ✓ skip target churn_data
-#&gt; ✓ skip target churn_recipe
-#&gt; ● run target run_relu
-#&gt; ● run target run_sigmoid
-```
-
-???
-
-So when we run the pipeline again, only the models run. The tool skips the data targets because they are already up to date.
-
----
-
-## Inspect the newest targets.
-
-
-```r
-tar_read(run_relu)
-#&gt; # A tibble: 1 x 6
-#&gt;   accuracy units1 units2 act1  act2  act3   
-#&gt;      &lt;dbl&gt;  &lt;dbl&gt;  &lt;dbl&gt; &lt;chr&gt; &lt;chr&gt; &lt;chr&gt;  
-#&gt; 1    0.797     16     16 relu  relu  sigmoid
-
-tar_read(run_sigmoid)
-#&gt; # A tibble: 1 x 6
-#&gt;   accuracy units1 units2 act1    act2  act3   
-#&gt;      &lt;dbl&gt;  &lt;dbl&gt;  &lt;dbl&gt; &lt;chr&gt;   &lt;chr&gt; &lt;chr&gt;  
-#&gt; 1    0.800     16     16 sigmoid relu  sigmoid
-```
-
-???
-
-And as usual, we read our newest targets and verify there are no obvious issues.
-
----
-
-## Find the best model
-
-
-```r
-# _targets.R
-library(targets)
-source("R/functions.R")
-tar_option_set(packages = c("keras", "tidyverse", "rsample", "recipes", "yardstick"))
-tar_pipeline(
-  ...,
-  tar_target(run_relu, test_model(act1 = "relu", churn_data, churn_recipe)),
-  tar_target(run_sigmoid, test_model(act1 = "sigmoid", churn_data, churn_recipe)),
-* tar_target(
-*   best_run,
-*   bind_rows(run_relu, run_sigmoid) %&gt;%
-*     top_n(1, accuracy) %&gt;%
-*     head(1)
-* ),
-* tar_target(
-*   best_model,
-*   retrain_run(best_run, churn_recipe),
-*   format = "keras"
-* )
-)
-```
-
-
-
-???
-
-And we repeat the process to gradually build up the pipeline. Here, we add new targets to find the model run with the highest accuracy so far and retrain that model to return a fitted model object. For fitted Keras models, we need to write 'format = "keras"' in tar_target() because Keras models cannot be saved with R's ordinary serialization functionality.
-
----
-
-## Find the best model
-
-
-```r
-tar_make()
-```
-
-
-```
-#&gt; ✓ skip target churn_file
-#&gt; ✓ skip target churn_data
-#&gt; ✓ skip target churn_recipe
-#&gt; ✓ skip target run_relu
-#&gt; ✓ skip target run_sigmoid
-#&gt; ● run target best_run
-#&gt; ● run target best_model
-```
-
-???
-
-As before, only only the new targets run because we didn't change any other code or data,
-
----
-
-## Find the best model
-
-
-```r
-tar_read(best_model)
-#&gt; Model
-#&gt; Model: "sequential_2"
-#&gt; ________________________________________________________________________________
-#&gt; Layer (type)                        Output Shape                    Param #     
-#&gt; ================================================================================
-#&gt; dense_6 (Dense)                     (None, 16)                      576         
-#&gt; ________________________________________________________________________________
-#&gt; dropout_4 (Dropout)                 (None, 16)                      0           
-#&gt; ________________________________________________________________________________
-#&gt; dense_7 (Dense)                     (None, 16)                      272         
-#&gt; ________________________________________________________________________________
-#&gt; dropout_5 (Dropout)                 (None, 16)                      0           
-#&gt; ________________________________________________________________________________
-#&gt; dense_8 (Dense)                     (None, 1)                       17          
-#&gt; ================================================================================
-#&gt; Total params: 865
-#&gt; Trainable params: 865
-#&gt; Non-trainable params: 0
-#&gt; ________________________________________________________________________________
-```
-
-???
-
-and now one of our targets is actually a trained Keras model.
-
----
-
-## Try another model.
-
-
-```r
-# _targets.R
-library(targets)
-source("R/functions.R")
-tar_option_set(packages = c("keras", "tidyverse", "rsample", "recipes", "yardstick"))
-tar_pipeline(
-  ...,
-  tar_target(run_relu, test_model(act1 = "relu", churn_data, churn_recipe)),
-  tar_target(run_sigmoid, test_model(act1 = "sigmoid", churn_data, churn_recipe)),
-* tar_target(run_softmax, test_model(act1 = "softmax", churn_data, churn_recipe)),
   tar_target(
-    best_run,
-*   bind_rows(run_relu, run_sigmoid, run_softmax) %&gt;%
-      top_n(1, accuracy) %&gt;%
-      head(1)
+    model_file,
+    quiet(compile_model("stan/model.stan")),
+    format = "file",
+    deployment = "local"
   ),
-  ...
+  tar_target(
+    batch_index,
+    seq_len(25),
+    deployment = "local"
+  ),
+  tar_target(
+    data_continuous,
+    map_dfr(seq_len(40), simulate_data_continuous),
+    pattern = map(batch_index),
+    format = "fst_tbl"
+  )
 )
 ```
 
-
-
-???
-
-If we try another model, we just need to add another target and reference that new target in any downstream targets that need it.
-
 ---
 
-## What gets done stays done.
-
-
-```r
-tar_outdated()
-```
-
-
-```
-#&gt; [1] "run_softmax" "best_run"    "best_model"
-```
-
-???
-
-Now, not only are the new model and the best_run target outdated, the tool automatically calls everything downstream into question, so best_model is suspect as well.
-
----
-
-## What gets done stays done.
+## Inspect the graph
 
 
 ```r
 tar_visnetwork()
 ```
 
-&lt;center&gt;
-&lt;img src="images/graph3.png", height = "400px" align="middle" style="border: none; box-shadow: none; text-align: center;"&gt;
-&lt;/center&gt;
-
-???
-
-Again, we see this clearly in the dependency graph. run_softmax is new, best_run is outdated because it uses run_softmax, and best_model is suspect because it depends on best_run.
+![](./images/graph1.png)
 
 ---
 
-## New best model?
-
-- Only if the new run beats the old runs, which would invalidate target `best_run`.
-- Otherwise, `drake` does not bother to retrain the best model.
+## Run the targets
 
 
 ```r
 tar_make()
-#&gt; ✓ skip target churn_file
-#&gt; ✓ skip target churn_data
-#&gt; ✓ skip target churn_recipe
-#&gt; ✓ skip target run_relu
-#&gt; ✓ skip target run_sigmoid
-#&gt; ● run target run_softmax
-#&gt; ● run target best_run
-#&gt; ✓ skip target best_model
+#&gt; ● run target batch_index
+#&gt; ● run target model_file
+#&gt; ● run branch data_continuous_f385e0ef
+#&gt; ● run branch data_continuous_0217a462
+#&gt; ● run branch data_continuous_a06bc09e
+#&gt; ● run branch data_continuous_c1e661c3
+#&gt; ...
 ```
-
-
-
-???
-
-When we run the pipeline again, of course run_softmax and best_run both execute. But if best_run doesn't change, we skip best_model. targets looks at the actual fingerprint of the data to make decisions, unlike GNU Make, which just uses timestamps.
 
 ---
 
-## What if we need to change a function?
-
-
-```r
-define_model &lt;- function(churn_recipe, units1, units2, act1, act2, act3) {
-  input_shape &lt;- ncol(
-    juice(churn_recipe, all_predictors(), composition = "matrix")
-  )
-  keras_model_sequential() %&gt;%
-    layer_dense(
-      units = units1,
-      kernel_initializer = "uniform",
-      activation = act1,
-      input_shape = input_shape
-    ) %&gt;%
-*   layer_dropout(rate = 0.2) %&gt;% # previously 0.1
-    layer_dense(
-      units = units2,
-      kernel_initializer = "uniform",
-      activation = act2
-    ) %&gt;%
-    layer_dropout(rate = 0.1) %&gt;%
-    ...
-```
-
-???
-
-If we change a function in a nontrivial way, targets notices. Let's increase the dropout rate in one of the layers in the neural net.
-
----
-
-## Show invalidated functions and targets.
-
-
-```r
-tar_visnetwork()
-```
-
-&lt;center&gt;
-&lt;img src="images/graph4.png", height = "400px" align="middle" style="border: none; box-shadow: none; text-align: center;"&gt;
-&lt;/center&gt;
-
-???
-
-The define_model() function is no longer up to date. That means neither is train_model() because it calls define_model(), and likewise with downstream functions. That means the targets downstream, which include all our model runs, are also invalidated.
-
----
-
-## Rerun invalidated targets.
+## Now all targets are up to date.
 
 
 ```r
 tar_make()
-#&gt; ✓ skip target churn_file
-#&gt; ✓ skip target churn_data
-#&gt; ✓ skip target churn_recipe
-#&gt; ● run target run_relu
-#&gt; ● run target run_sigmoid
-#&gt; ● run target run_softmax
-#&gt; ● run target best_run
-#&gt; ● run target best_model
-```
-
-???
-
-But we can bring everything back up to date without rerunning the data processing.
-
----
-
-## Similar story if the data file changes.
-
-
-
-```r
-tar_make()
-#&gt; ● run target churn_file
-#&gt; ● run target churn_data
-#&gt; ● run target churn_recipe
-#&gt; ● run target run_relu
-#&gt; ● run target run_sigmoid
-#&gt; ● run target run_softmax
-#&gt; ● run target best_run
-#&gt; ● run target best_model
-```
-
-???
-
-But the data processing does rerun if we change our data file. This is because in our upstream target churn_file, we selected 'format = "file"' in the tar_target() function. That tells targets to treat the return value of the command as a vector of file and directory paths, and it watches that data for changes.
-
----
-
-## Evidence of reproducibility
-
-
-```r
-tar_make(plan)
-#&gt; ✓ skip target churn_file
-#&gt; ✓ skip target churn_data
-#&gt; ✓ skip target churn_recipe
-#&gt; ✓ skip target run_relu
-#&gt; ✓ skip target run_sigmoid
-#&gt; ✓ skip target run_softmax
-#&gt; ✓ skip target best_run
-#&gt; ✓ skip target best_model
+#&gt; ✓ skip target batch_index
+#&gt; ✓ skip target model_file
+#&gt; ✓ skip branch data_continuous_f385e0ef
+#&gt; ✓ skip branch data_continuous_0217a462
+#&gt; ✓ skip branch data_continuous_a06bc09e
+#&gt; ✓ skip branch data_continuous_c1e661c3
+#&gt; ...
 #&gt; ✓ Already up to date.
 ```
 
-???
-
-At the end of the day, targets can tell you if all your targets are up to date. This is tangible evidence that your output matches the code and data it's supposed to come from. It's evidence that someone else running the same code would get the same results. That's reproducibility. It's certainly not the only form of reproducibility, but it does increase the trust we can place in the conclusions of the project.
-
 ---
 
-## Evidence of reproducibility
+## Now all targets are up to date.
 
 
 ```r
-tar_outdated()
-#&gt; character(0)
-
 tar_visnetwork()
 ```
 
-&lt;center&gt;
-&lt;img src="images/graph5.png", height = "350px" align="middle" style="border: none; box-shadow: none; text-align: center;"&gt;
-&lt;/center&gt;
+![](./images/graph2.png)
 
-???
+---
 
-And again, utility functions can confirm the status of targets without needing to run tar_make().
+## Inspect the data
+
+
+```r
+tar_read(data_continuous, branches = 1) # see also tar_load()
+#&gt; # A tibble: 200 x 4
+#&gt;         x       y beta_true rep            
+#&gt;     &lt;dbl&gt;   &lt;dbl&gt;     &lt;dbl&gt; &lt;chr&gt;          
+#&gt;  1  0.446  1.37      -0.870 rep3841223f956f
+#&gt;  2  2.01  -0.361     -0.870 rep3841223f956f
+#&gt;  3  1.05  -0.183     -0.870 rep3841223f956f
+#&gt;  4  0.734 -0.891     -0.870 rep3841223f956f
+#&gt;  5  0.567  1.18      -0.870 rep3841223f956f
+#&gt;  6  1.30   0.306     -0.870 rep3841223f956f
+#&gt;  7  0.649  0.0242    -0.870 rep3841223f956f
+#&gt;  8  0.678  0.793     -0.870 rep3841223f956f
+#&gt;  9  1.05   0.688     -0.870 rep3841223f956f
+#&gt; 10 -0.437  2.25      -0.870 rep3841223f956f
+#&gt; # … with 190 more rows
+```
+
+---
+
+## Add the models to the pipeline
+
+
+```r
+# _targets.R
+# setup...
+tar_pipeline(
+  # existing targets...
+  tar_target(
+    fit_continuous,
+    quiet(map_reps(data_continuous, fit_model, model_file = model_file)),
+    pattern = map(data_continuous),
+    format = "fst_tbl"
+  )
+)
+```
+
+
+---
+
+## Check the dependency graph
+
+
+```r
+tar_visnetwork()
+```
+
+&lt;img src="./images/graph3.png" height = "400px"&gt;
+
+---
+
+## Run the models on a cluster
+
+
+```r
+tar_make_clustermq(workers = 25)
+#&gt; ✓ skip target batch_index
+#&gt; ✓ skip target model_file
+#&gt; ✓ skip branch data_continuous_f385e0ef
+#&gt; ✓ skip branch data_continuous_0217a462
+#&gt; ...
+#&gt; ● run branch fit_continuous_5f87e2ff
+#&gt; ● run branch fit_continuous_d5dfa376
+#&gt; ...
+```
+
+---
+
+## Inspect the model results
+
+
+```r
+tar_read(fit_continuous)
+#&gt; # A tibble: 8 x 13
+#&gt;   rep   variable    mean  median      sd     mad     q5     q95
+#&gt;   &lt;chr&gt; &lt;chr&gt;      &lt;dbl&gt;   &lt;dbl&gt;   &lt;dbl&gt;   &lt;dbl&gt;  &lt;dbl&gt;   &lt;dbl&gt;
+#&gt; 1 rep3… beta     -0.765  -0.765  0.0868  0.0856  -0.905 -0.619 
+#&gt; 2 rep3… beta      1.03    1.03   0.0840  0.0852   0.892  1.17  
+#&gt; 3 rep3… beta     -0.560  -0.560  0.0309  0.0306  -0.612 -0.511 
+#&gt; 4 rep3… beta      0.859   0.859  0.0302  0.0306   0.810  0.908 
+#&gt; 5 rep3… beta     -0.0980 -0.0962 0.111   0.109   -0.280  0.0792
+#&gt; 6 rep3… beta      0.462   0.463  0.0567  0.0565   0.369  0.555 
+#&gt; 7 rep3… beta      0.316   0.318  0.0848  0.0840   0.178  0.454 
+#&gt; 8 rep3… beta      0.499   0.499  0.00727 0.00709  0.486  0.511 
+#&gt; # … with 5 more variables: rhat &lt;dbl&gt;, ess_bulk &lt;dbl&gt;,
+#&gt; #   ess_tail &lt;dbl&gt;, beta_true &lt;dbl&gt;, cover_beta &lt;lgl&gt;
+```
+
+
+---
+
+## Inspect the graph
+
+
+```r
+tar_visnetwork(label = c("time", "size", "branches"))
+```
+
+&lt;img src="./images/graph4.png" height = "400px"&gt;
+
+
+---
+
+## Add discrete data
+
+
+```r
+# functions.R
+simulate_data_discrete &lt;- function(...) {
+  alpha &lt;- rnorm(1, 0, 1)
+  beta &lt;- rnorm(1, 0, 1)
+  sigma &lt;- runif(1, 0, 1)
+* x &lt;- rbinom(100, 1, 0.5) # discrete covariate
+  y &lt;- rnorm(100, alpha + x * beta, sigma)
+  rep &lt;- basename(tempfile(pattern = "rep"))
+  tibble(x = x, y = y, beta_true = beta, rep = rep)
+}
+```
+
+---
+
+## Add an R Markdown report
+
+&lt;img src="./images/report.png" height = "450px"&gt;
+
+---
+
+## Add new targets
+
+
+```r
+# _targets.R
+# setup...
+tar_pipeline(
+  # existing targets...
+  tar_target(
+    data_discrete,
+    map_dfr(seq_len(2), simulate_data_discrete),
+    pattern = map(batch_index),
+    format = "fst_tbl"
+  ),
+  tar_target(
+    fit_discrete,
+    quiet(map_reps(data_discrete, fit_model, model_file = model_file)),
+    pattern = map(data_discrete),
+    format = "fst_tbl"
+  ),
+  tar_render(report, "report.Rmd") # from tarchetypes
+)
+```
+
+---
+
+## New targets
+
+
+```r
+tar_visnetwork(label = c("time", "size", "branches"))
+```
+
+&lt;img src="./images/graph5.png" height = "400px"&gt;
+
 
 ---
 
@@ -1057,9 +794,8 @@ install.packages("remotes")
 remotes::install_github("wlandau/targets")
 ```
 
-* Code: &lt;https://github.com/wlandau/targets-keras&gt;
-* RStudio Cloud workspace: &lt;https://rstudio.cloud/project/1430828/&gt;
-* These slides: &lt;https://wlandau.github.io/targets-tutorial&gt;
+* Code: &lt;https://github.com/wlandau/targets-stan&gt;
+* These slides: &lt;https://wlandau.github.io/nyhackr2020&gt;
 * Tutorial materials: &lt;https://github.com/wlandau/targets-tutorial&gt;
 * Development repository: &lt;https://github.com/wlandau/targets&gt;
 * Full user manual: &lt;https://wlandau.github.io/targets-manual/&gt;
@@ -1068,41 +804,6 @@ remotes::install_github("wlandau/targets")
 ???
 
 There are several resources to learn about targets. There's a reference website, an online user manual, and a repository with the example code from today.
-
-targets is nearing the end of its beta phase. I am about to submit it to rOpenSci for peer review, and I hope to have it on CRAN at the end of this year or early next year. Now is a great time for feedback because there is no formal release yet and the interface is not yet set in stone.
-
----
-
-## The tutorial
-
-1. Sign up for a free account at &lt;https://rstudio.cloud&gt;.
-2. Log into &lt;https://rstudio.cloud/project/1512447&gt;.
-3. Work through the R notebooks in order.
-4. Optional: revisit the material again later at &lt;https://github.com/wlandau/targets-tutorial&gt;.
-
-Topic | Notebook
----|---
-Functions | [`1-functions.Rmd`](https://github.com/wlandau/targets-tutorial/blob/master/1-functions.Rmd)
-Pipelines | [`2-pipelines.Rmd`](https://github.com/wlandau/targets-tutorial/blob/master/2-pipelines.Rmd)
-Changes | [`3-changes.Rmd`](https://github.com/wlandau/targets-tutorial/blob/master/3-changes.Rmd)
-Files | [`4-files.Rmd`](https://github.com/wlandau/targets-tutorial/blob/master/4-files.Rmd)
-Branching | [`5-branching.Rmd`](https://github.com/wlandau/targets-tutorial/blob/master/5-branching.Rmd)
-Debugging | [`6-debugging.Rmd`](https://github.com/wlandau/targets-tutorial/blob/master/6-debugging.Rmd)
-Challenge | [`7-challenge.Rmd`](https://github.com/wlandau/targets-tutorial/blob/master/7-challenge.Rmd)
-
-
-
-???
-
-The workshop is publicly available and deployed to RStudio Cloud. Just sign up for a cloud account and log into a free instance of RStudio Server. We will spend our remaining time working through interactive exercises in the R notebooks here, with some breaks for Q&amp;A and live coding demos to go over the solutions. If you missed part of the exercises or just want to go back and study in your own time, the workshop will still be available. I included the link to both the source and the cloud project here.
-
----
-
-
-## References
-
-* Dancho. "Deep Learning With Keras To Predict Customer Churn." RStudio AI Blog, 2018-01-11. &lt;https://blogs.rstudio.com/tensorflow/posts/2018-01-11-keras-customer-churn/&gt;
-* IBM Cognos Analytics. "Telco customer churn (11.1.3+)." IBM Community, 2019-07-11. &lt;https://community.ibm.com/community/user/businessanalytics/blogs/steven-macko/2019/07/11/telco-customer-churn-1113&gt;
     </textarea>
 <style data-target="print-only">@media screen {.remark-slide-container{display:block;}.remark-slide-scaler{box-shadow:none;}}</style>
 <script src="https://remarkjs.com/downloads/remark-latest.min.js"></script>
