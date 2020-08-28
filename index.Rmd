@@ -846,13 +846,13 @@ tar_make_clustermq(workers = 25)
 
 ## Inspect the report
 
-<img src="./images/report2.png" height = "400px">
+<img src="./images/report2.png" height = "500px">
 
 ---
 
 ## Inspect the report
 
-<img src="./images/report3.png" height = "400px">
+<img src="./images/report3.png" height = "500px">
 
 ---
 

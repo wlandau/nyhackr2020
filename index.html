@@ -784,7 +784,60 @@ tar_visnetwork(label = c("time", "size", "branches"))
 
 ---
 
-## Only run the new outdated targets
+## Only the new targets run
+
+
+```r
+tar_make_clustermq(workers = 25)
+#&gt; ✓ skip target batch_index
+#&gt; ✓ skip target model_file
+#&gt; ✓ skip branch data_continuous_f385e0ef
+#&gt; ✓ skip branch data_continuous_0217a462
+#&gt; ...
+#&gt; ✓ skip branch fit_continuous_5f87e2ff
+#&gt; ✓ skip branch fit_continuous_d5dfa376
+#&gt; ...
+#&gt; ● run branch data_discrete_06241955
+#&gt; ● run branch data_discrete_88664909
+#&gt; ...
+#&gt; ● run branch fit_discrete_e31322f6
+#&gt; ● run branch fit_discrete_a2fab7f4
+#&gt; ...
+#&gt; ● run target report
+```
+
+---
+
+## Change a function
+
+
+```r
+# functions.R
+simulate_data_discrete &lt;- function(...) {
+  alpha &lt;- rnorm(1, 0, 1)
+  beta &lt;- rnorm(1, 0, 1)
+  sigma &lt;- runif(1, 0, 1)
+* x &lt;- rbinom(100, 1, 0.3) # previously 0.5
+  y &lt;- rnorm(100, alpha + x * beta, sigma)
+  rep &lt;- basename(tempfile(pattern = "rep"))
+  tibble(x = x, y = y, beta_true = beta, rep = rep)
+}
+```
+
+---
+
+## Downstream targets are automatically invalidated
+
+
+```r
+tar_visnetwork()
+```
+
+&lt;img src="./images/graph7.png" height = "400px"&gt;
+
+---
+
+## Only the affected targets rerun
 
 
 ```r
@@ -810,13 +863,13 @@ tar_make_clustermq(workers = 25)
 
 ## Inspect the report
 
-&lt;img src="./images/report2.png" height = "400px"&gt;
+&lt;img src="./images/report2.png" height = "500px"&gt;
 
 ---
 
 ## Inspect the report
 
-&lt;img src="./images/report3.png" height = "400px"&gt;
+&lt;img src="./images/report3.png" height = "500px"&gt;
 
 ---
 
