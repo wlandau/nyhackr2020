@@ -395,7 +395,7 @@ $$
 
 1. Simulate 1000 datasets from the model.
 1. Fit the model to each simulated dataset.
-1. Verify that in 95% of the simulation reps, the $\beta$ parameter values used for data generation are covered in 95% credible intervals.
+1. Verify that in 90% of the simulation reps, the $\beta$ parameter values used for data generation are covered in 90% credible intervals.
 
 ---
 
@@ -771,7 +771,57 @@ tar_visnetwork(label = c("time", "size", "branches"))
 
 ---
 
-## Only run the new outdated targets
+## Only the new targets run
+
+```{r, eval = FALSE}
+tar_make_clustermq(workers = 25)
+#> ✓ skip target batch_index
+#> ✓ skip target model_file
+#> ✓ skip branch data_continuous_f385e0ef
+#> ✓ skip branch data_continuous_0217a462
+#> ...
+#> ✓ skip branch fit_continuous_5f87e2ff
+#> ✓ skip branch fit_continuous_d5dfa376
+#> ...
+#> ● run branch data_discrete_06241955
+#> ● run branch data_discrete_88664909
+#> ...
+#> ● run branch fit_discrete_e31322f6
+#> ● run branch fit_discrete_a2fab7f4
+#> ...
+#> ● run target report
+```
+
+---
+
+## Change a function
+
+```{r, eval = FALSE}
+# functions.R
+simulate_data_discrete <- function(...) {
+  alpha <- rnorm(1, 0, 1)
+  beta <- rnorm(1, 0, 1)
+  sigma <- runif(1, 0, 1)
+  x <- rbinom(100, 1, 0.3) # previously 0.5 #<<
+  y <- rnorm(100, alpha + x * beta, sigma)
+  rep <- basename(tempfile(pattern = "rep"))
+  tibble(x = x, y = y, beta_true = beta, rep = rep)
+}
+```
+
+---
+
+## Downstream targets are automatically invalidated
+
+```{r, eval = FALSE}
+tar_visnetwork()
+```
+
+<img src="./images/graph7.png" height = "400px">
+
+---
+
+## Only the affected targets rerun
 
 ```{r, eval = FALSE}
 tar_make_clustermq(workers = 25)
@@ -797,6 +847,12 @@ tar_make_clustermq(workers = 25)
 ## Inspect the report
 
 <img src="./images/report2.png" height = "400px">
+
+---
+
+## Inspect the report
+
+<img src="./images/report3.png" height = "400px">
 
 ---
 
