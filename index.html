@@ -267,7 +267,7 @@ data.frame(
   id = rep(letters[seq_len(3)], each = 2)
 ) %&gt;%
   group_by(id) %&gt;%
-  tar_group()
+* tar_group()
 #&gt; # A tibble: 6 x 3
 #&gt; # Groups:   id [3]
 #&gt;       x id    tar_group
@@ -297,7 +297,7 @@ tar_target(
     id = rep(letters[seq_len(3)], each = 2)
   ) %&gt;%
     group_by(id) %&gt;%
-    tar_group(),
+*   tar_group(),
   iteration = "group"
 )
 ```
@@ -444,14 +444,14 @@ The most obvious use for functions is as a way to avoid copies of repeated code 
 
 
 ```r
-simulate_data_continuous &lt;- function(...) {
+simulate_data_continuous &lt;- function() {
   alpha &lt;- rnorm(1, 0, 1)
   beta &lt;- rnorm(1, 0, 1)
   sigma &lt;- runif(1, 0, 1)
   x &lt;- rnorm(100, 1, 1) # continuous covariate
   y &lt;- rnorm(100, alpha + x * beta, sigma)
-  rep &lt;- basename(tempfile(pattern = "rep"))
-  tibble(x = x, y = y, beta_true = beta, rep = rep)
+  sim &lt;- basename(tempfile(pattern = "sim"))
+  tibble(x = x, y = y, beta_true = beta, sim = sim)
 }
 ```
 
@@ -461,7 +461,7 @@ simulate_data_continuous &lt;- function(...) {
 
 
 ```r
-fit_model &lt;- function(data, model_file, ...) {
+fit_model &lt;- function(data, model_file) {
   stan_data &lt;- list(x = data$x, y = data$y, n = nrow(data))
   truth &lt;- data$beta_true[1]
   model &lt;- cmdstan_model(model_file)
@@ -479,20 +479,21 @@ fit_model &lt;- function(data, model_file, ...) {
 
 ```r
 compile_model &lt;- function(model_file) {
-  cmdstan_model(model_file)
+  quiet(cmdstan_model(model_file))
   model_file
 }
 
-map_reps &lt;- function(data, fun, ...) {
+map_sims &lt;- function(data, model_file) {
   data %&gt;%
-    group_by(rep) %&gt;%
-    group_modify(fun, ...) %&gt;%
+    group_by(sim) %&gt;%
+    group_modify(~quiet(fit_model(.x, model_file = model_file))) %&gt;%
     ungroup()
 }
 
 quiet &lt;- function(code) {
-  capture.output(out &lt;- suppressMessages(code))
-  out
+  sink(nullfile())
+  on.exit(sink())
+  suppressMessages(code)
 }
 ```
 
@@ -545,15 +546,12 @@ tar_pipeline(
     format = "file",
     deployment = "local"
   ),
-  tar_target(
-    batch_index,
-    seq_len(25),
-    deployment = "local"
-  ),
+  tar_target(index_batch, seq_len(25)),
+  tar_target(index_sim, seq_len(40)),
   tar_target(
     data_continuous,
-    map_dfr(seq_len(40), simulate_data_continuous),
-    pattern = map(batch_index),
+    map_dfr(index_sim, ~simulate_data_continuous()),
+    pattern = map(index_batch),
     format = "fst_tbl"
   )
 )
@@ -649,7 +647,7 @@ tar_pipeline(
   # existing targets...
   tar_target(
     fit_continuous,
-    quiet(map_reps(data_continuous, fit_model, model_file = model_file)),
+    map_sims(data_continuous, model_file = model_file),
     pattern = map(data_continuous),
     format = "fst_tbl"
   )
@@ -727,14 +725,14 @@ tar_visnetwork(label = c("time", "size", "branches"))
 
 ```r
 # functions.R
-simulate_data_discrete &lt;- function(...) {
+simulate_data_discrete &lt;- function() {
   alpha &lt;- rnorm(1, 0, 1)
   beta &lt;- rnorm(1, 0, 1)
   sigma &lt;- runif(1, 0, 1)
-* x &lt;- rbinom(100, 1, 0.5) # discrete covariate
+  x &lt;- rbinom(100, 1, 0.5) # discrete covariate
   y &lt;- rnorm(100, alpha + x * beta, sigma)
-  rep &lt;- basename(tempfile(pattern = "rep"))
-  tibble(x = x, y = y, beta_true = beta, rep = rep)
+  sim &lt;- basename(tempfile(pattern = "sim"))
+  tibble(x = x, y = y, beta_true = beta, sim = sim)
 }
 ```
 
@@ -756,13 +754,13 @@ tar_pipeline(
   # existing targets...
   tar_target(
     data_discrete,
-    map_dfr(seq_len(2), simulate_data_discrete),
-    pattern = map(batch_index),
+    map_dfr(index_sim, ~simulate_data_discrete()),
+    pattern = map(index_batch),
     format = "fst_tbl"
   ),
   tar_target(
     fit_discrete,
-    quiet(map_reps(data_discrete, fit_model, model_file = model_file)),
+    map_sims(data_discrete, model_file = model_file),
     pattern = map(data_discrete),
     format = "fst_tbl"
   ),
@@ -819,8 +817,8 @@ simulate_data_discrete &lt;- function(...) {
   sigma &lt;- runif(1, 0, 1)
 * x &lt;- rbinom(100, 1, 0.3) # previously 0.5
   y &lt;- rnorm(100, alpha + x * beta, sigma)
-  rep &lt;- basename(tempfile(pattern = "rep"))
-  tibble(x = x, y = y, beta_true = beta, rep = rep)
+  sim &lt;- basename(tempfile(pattern = "sim"))
+  tibble(x = x, y = y, beta_true = beta, sim = sim)
 }
 ```
 
