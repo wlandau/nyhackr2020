@@ -815,7 +815,7 @@ simulate_data_discrete <- function(...) {
 tar_visnetwork()
 ```
 
-<img src="./images/graph7.png" height = "400px">
+<img src="./images/graph5.png" height = "400px">
 
 ---
 
