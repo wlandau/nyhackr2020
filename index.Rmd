@@ -309,7 +309,7 @@ tar_target(
   ) %>%
     group_by(id) %>%
     tar_group(), #<<
-  iteration = "group"
+  iteration = "group" #<<
 )
 ```
 
