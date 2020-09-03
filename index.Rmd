@@ -389,13 +389,38 @@ $$
 y_i &\stackrel{\text{iid}}{\sim} \text{Normal}(\alpha + \beta \cdot x_i, \ \sigma^2) \\
 \alpha &\sim \text{Normal}(0, 1) \\
 \beta &\sim \text{Normal}(0, 1) \\
-\sigma &\sim \text{Uniform}(0, 1) \\
+\sigma &\sim \text{HalfCauchy}(0, 1) \\
 \end{aligned}
 $$
 
 1. Simulate 1000 datasets from the model.
 1. Fit the model to each simulated dataset.
-1. Verify that in 90% of the simulation reps, the $\beta$ parameter values used for data generation are covered in 90% credible intervals.
+1. Verify that in 90% of the simulation reps, the $\beta$ parameter values used for data generation are covered in 90% credible intervals. (Should repeat for other parameters too.)
+
+---
+
+## Stan model
+
+```r
+data {
+  int <lower = 1> n;
+  vector[n] x;
+  vector[n] y;
+}
+parameters {
+  real alpha;
+  real beta;
+  real <lower = 0> sigma;
+}
+model {
+  for (i in 1:n) {
+    y[i] ~ normal(alpha + x[i] * beta, sigma);
+  }
+  alpha ~ normal(0, 1);
+  beta ~ normal(0, 1);
+  sigma ~ cauchy(0, 1);
+}
+```
 
 ---
 
@@ -452,7 +477,7 @@ The most obvious use for functions is as a way to avoid copies of repeated code 
 simulate_data_continuous <- function() {
   alpha <- rnorm(1, 0, 1)
   beta <- rnorm(1, 0, 1)
-  sigma <- runif(1, 0, 1)
+  sigma <- rhcauchy(1, 1)
   x <- rnorm(100, 1, 1) # continuous covariate
   y <- rnorm(100, alpha + x * beta, sigma)
   sim <- basename(tempfile(pattern = "sim"))
@@ -530,7 +555,9 @@ source("R/functions.R")
 source("R/utils.R")
 options(tidyverse.quiet = TRUE)
 options(clustermq.scheduler = "sge", clustermq.template = "sge.tmpl")
-tar_option_set(packages = c("cmdstanr", "rmarkdown", "tidyverse"))
+tar_option_set(
+  packages = c("cmdstanr", "extraDistr", "rmarkdown", "tidyverse")
+)
 ```
 
 ---
@@ -717,7 +744,7 @@ tar_visnetwork(label = c("time", "size", "branches"))
 simulate_data_discrete <- function() {
   alpha <- rnorm(1, 0, 1)
   beta <- rnorm(1, 0, 1)
-  sigma <- runif(1, 0, 1)
+  sigma <- rhcauchy(1, 1)
   x <- rbinom(100, 1, 0.5) # discrete covariate
   y <- rnorm(100, alpha + x * beta, sigma)
   sim <- basename(tempfile(pattern = "sim"))
@@ -799,7 +826,7 @@ tar_make_clustermq(workers = 25)
 simulate_data_discrete <- function(...) {
   alpha <- rnorm(1, 0, 1)
   beta <- rnorm(1, 0, 1)
-  sigma <- runif(1, 0, 1)
+  sigma <- rhcauchy(1, 1)
   x <- rbinom(100, 1, 0.3) # previously 0.5 #<<
   y <- rnorm(100, alpha + x * beta, sigma)
   sim <- basename(tempfile(pattern = "sim"))
