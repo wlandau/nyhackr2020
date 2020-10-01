@@ -269,6 +269,31 @@ targets simplifies data storage. It only stores what it needs to. There's one fi
 
 ---
 
+## Seamless AWS S3 integration
+
+<https://wlandau.github.io/targets-manual/cloud.html>
+
+```{r, eval = FALSE}
+# _targets.R
+tar_option_set(resources = list(bucket = "my-bucket-name"))
+tar_pipeline(
+  tar_target(dataset, get_large_dataset(), format = "aws_fst_tbl"),
+  tar_target(analysis, analyze_dataset(dataset), format = "aws_qs")
+)
+```
+
+```{r, eval = FALSE}
+# R session
+tar_make()
+tar_read(dataset)
+```
+
+???
+
+The simpler data store paved the way for seamless, Metaflow-like integration with Amazon S3. There's a little config, but after that, `targets` will automatically upload the return values to an S3 bucket. And retrieving cloud data feels exactly the same as reading local data.
+
+---
+
 ## Show which functions are out of date
 
 ![](./images/graph_imports.png)
