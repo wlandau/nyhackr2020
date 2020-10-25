@@ -407,7 +407,7 @@ In addition, there's an external package called `tarchetypes` that uses these me
 
 ---
 
-## Example targets workflow: validate a Bayesian hierarchical model
+## Example targets workflow: validate a Bayesian model
 
 $$
 \begin{aligned}
