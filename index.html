@@ -936,19 +936,16 @@ tar_read(z)
 
 
 ```r
-x &lt;- c("x1", "x2")
-y &lt;- c("y1", "y2", "y3")
-z &lt;- c("z1", "z2", "z3")
-tar_pattern(cross(x, map(y, z)), x = x, y = y, z = z)
+tar_pattern(cross(sample(x, 2), map(y, z)), x = 25, y = 3, z = 3)
 #&gt; # A tibble: 6 x 3
 #&gt;   x     y     z    
 #&gt;   &lt;chr&gt; &lt;chr&gt; &lt;chr&gt;
-#&gt; 1 x1    y1    z1   
-#&gt; 2 x1    y2    z2   
-#&gt; 3 x1    y3    z3   
-#&gt; 4 x2    y1    z1   
-#&gt; 5 x2    y2    z2   
-#&gt; 6 x2    y3    z3
+#&gt; 1 x_14  y_1   z_1  
+#&gt; 2 x_14  y_2   z_2  
+#&gt; 3 x_14  y_3   z_3  
+#&gt; 4 x_4   y_1   z_1  
+#&gt; 5 x_4   y_2   z_2  
+#&gt; 6 x_4   y_3   z_3
 ```
 
 ---

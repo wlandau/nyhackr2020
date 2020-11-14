@@ -916,10 +916,7 @@ tar_read(z)
 ## Dynamic branching emulation
 
 ```{r}
-x <- c("x1", "x2")
-y <- c("y1", "y2", "y3")
-z <- c("z1", "z2", "z3")
-tar_pattern(cross(x, map(y, z)), x = x, y = y, z = z)
+tar_pattern(cross(sample(x, 2), map(y, z)), x = 25, y = 3, z = 3)
 ```
 
 ---
