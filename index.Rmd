@@ -903,6 +903,27 @@ tar_read(z)
 
 ---
 
+## New pattern types (easy to add more)
+
+* `map()`: iterate over one or more targets in sequence.
+* `cross()`: iterate over combinations of slices of targets.
+* `head()`: restrict branching to the first few elements.
+* `tail()`: restrict branching to the last few elements.
+* `sample()`: restrict branching to a random subset of elements.
+
+---
+
+## Dynamic branching emulation
+
+```{r}
+x <- c("x1", "x1")
+y <- c("y1", "y2", "y3")
+z <- c("z1", "z2", "z3")
+tar_pattern(cross(x, map(y, z)), x = x, y = y, z = z)
+```
+
+---
+
 ## Metaprogramming
 
 * `tar_target_raw()` avoids non-standard evaluation and supports third-party metaprogramming.
@@ -936,7 +957,7 @@ Function | Target archetype
 `tar_knit()` | Run a dependency-aware `knitr` report.
 `tar_change()` | Always run a target when a custom object changes.
 `tar_force()` | Always run a target when a custom condition is true.
-`tar_suppress()` | Never run a target when a custom condition is true.
+`tar_skip()` | Never run a target when a custom condition is true.
 `tar_plan()` | Simplified `drake`-like syntax for `targets` pipelines.
 
 ???
